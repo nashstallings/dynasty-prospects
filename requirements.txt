@@ -1,0 +1,5 @@
+cfbd==5.20.1
+pandas-gbq
+google-cloud-bigquery
+pandas
+nfl_data_py
