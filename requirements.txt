@@ -2,4 +2,9 @@ cfbd==5.20.1
 pandas-gbq
 google-cloud-bigquery
 pandas
-nfl_data_py
+appdirs
+fastparquet
+
+# nfl_data_py pins pandas<2.0/numpy<2.0 (stale; it runs fine on newer pandas),
+# which breaks resolution against the pins above. Install separately:
+#   pip install --no-deps nfl_data_py==0.3.3

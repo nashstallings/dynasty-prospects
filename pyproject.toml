@@ -12,8 +12,15 @@ dependencies = [
     "pandas-gbq",
     "google-cloud-bigquery",
     "pandas",
-    "nfl_data_py",
+    "appdirs",
+    "fastparquet",
 ]
+
+# nfl_data_py==0.3.3 pins pandas<2.0/numpy<2.0, which forces pip's resolver to
+# downgrade pandas project-wide and breaks the build on Python 3.12 (no wheel
+# for pandas 1.5.3). It imports and runs fine against pandas 2.x/3.x in
+# practice, so it's installed separately with --no-deps (see requirements.txt
+# / notebooks/colab_runner.ipynb) instead of being listed here.
 
 [tool.setuptools.packages.find]
 where = ["src"]
