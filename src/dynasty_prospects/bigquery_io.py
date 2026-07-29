@@ -14,5 +14,5 @@ def verify(project_id: str, dataset_id: str) -> pd.DataFrame:
     from google.cloud import bigquery
 
     client = bigquery.Client(project=project_id)
-    query = f"SELECT table_name, row_count FROM `{project_id}.{dataset_id}.__TABLES__`"
+    query = f"SELECT table_id, row_count FROM `{project_id}.{dataset_id}.__TABLES__`"
     return client.query(query).to_dataframe()
