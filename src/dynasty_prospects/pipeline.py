@@ -46,6 +46,11 @@ def run(cfbd_api_key: str, write_to_bq: bool = True) -> dict[str, pd.DataFrame]:
     }
 
     if write_to_bq:
-        write_tables(tables, config.PROJECT_ID, config.DATASET_ID)
+        # fact_scouting_rankings is excluded here: it accumulates manually
+        # uploaded snapshots (see scouting.py / notebooks/colab_runner.ipynb
+        # step 6) and would otherwise get replaced with an empty table on
+        # every routine pipeline run.
+        tables_to_write = {k: v for k, v in tables.items() if k != "fact_scouting_rankings"}
+        write_tables(tables_to_write, config.PROJECT_ID, config.DATASET_ID)
 
     return tables
