@@ -1,23 +1,10 @@
-# Base deps, shared by both pipelines. Actual installs happen via
-# `pip install -e .[cfbd]` or `pip install -e .[nfl]` (see pyproject.toml) --
-# NOT `pip install -r requirements.txt` -- because cfbd and nflreadpy pin
-# incompatible pydantic majors and can't be resolved together. This file is
-# a reference listing of what each extra pulls in.
+cfbd==5.20.1
 pandas-gbq
 google-cloud-bigquery
 pandas
 appdirs
 fastparquet
 
-# dynasty_prospects extra ([cfbd])
-cfbd==5.20.1
-
-# nfl_data extra ([nfl])
-nflreadpy
-sleeper-api-wrapper
-polars
-
 # nfl_data_py pins pandas<2.0/numpy<2.0 (stale; it runs fine on newer pandas),
-# which breaks resolution against the pins above. Used only by
-# dynasty_prospects/combine.py; install separately:
+# which breaks resolution against the pins above. Install separately:
 #   pip install --no-deps nfl_data_py==0.3.3
