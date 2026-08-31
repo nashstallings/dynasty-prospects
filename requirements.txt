@@ -4,6 +4,8 @@ google-cloud-bigquery
 pandas
 appdirs
 fastparquet
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
 
 # nfl_data_py pins pandas<2.0/numpy<2.0 (stale; it runs fine on newer pandas),
 # which breaks resolution against the pins above. Install separately:

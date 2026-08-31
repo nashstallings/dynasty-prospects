@@ -1,0 +1,105 @@
+name: Deploy
+
+# Deploys on every push to main that changes something the service actually
+# serves. A notebook or README edit does not warrant a new revision.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "web/**"
+      - "data/**"
+      - "Dockerfile"
+      - "requirements.txt"
+      - "pyproject.toml"
+      - "infra/deploy.sh"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+  # The scheduled refresh calls this directly. It has to: a push made with
+  # GITHUB_TOKEN deliberately does not trigger the push trigger above, so a
+  # rebuilt dashboard.json would otherwise sit in main and never reach the
+  # service.
+  workflow_call:
+
+# Never let an older build land on top of a newer one.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # for Workload Identity Federation
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Inert until the variables exist, so pushes do not fail before setup.
+    if: vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_DEPLOY_SERVICE_ACCOUNT != ''
+    steps:
+      - uses: actions/checkout@v5
+
+      # GitHub's OIDC token is exchanged for short-lived Google credentials at
+      # run time. No service account key is stored in this repository.
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      # `gcloud run deploy` against a service account that does not exist
+      # fails on actAs, which reads like the deployer is missing a
+      # permission rather than like bootstrap.sh was never run.
+      - name: Check prerequisites
+        env:
+          PROJECT: ${{ vars.GCP_PROJECT || 'ff-python-api' }}
+          RUNTIME_SA: ${{ vars.CLOUD_RUN_RUNTIME_SA || 'dynasty-prospects-run' }}
+        run: |
+          SA="${RUNTIME_SA}@${PROJECT}.iam.gserviceaccount.com"
+          if OUT="$(gcloud iam service-accounts describe "${SA}" \
+                      --project="${PROJECT}" 2>&1)"; then
+            echo "${SA} exists"
+            exit 0
+          fi
+          if grep -qiE 'not_?found|does not exist' <<<"${OUT}"; then
+            echo "::error::${SA} does not exist. Run ./infra/bootstrap.sh in Cloud Shell, then re-run this workflow."
+            exit 1
+          fi
+          echo "::warning::could not verify ${SA} — the deployer may lack iam.serviceAccounts.get. Continuing; a genuinely missing account fails the deploy with actAs."
+          echo "${OUT}"
+
+      - name: Deploy to Cloud Run
+        env:
+          PROJECT: ${{ vars.GCP_PROJECT || 'ff-python-api' }}
+          REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+          SERVICE: ${{ vars.CLOUD_RUN_SERVICE || 'dynasty-prospects' }}
+          RUNTIME_SA: ${{ vars.CLOUD_RUN_RUNTIME_SA || 'dynasty-prospects-run' }}
+        run: |
+          gcloud run deploy "${SERVICE}" \
+            --project="${PROJECT}" \
+            --region="${REGION}" \
+            --source=. \
+            --service-account="${RUNTIME_SA}@${PROJECT}.iam.gserviceaccount.com" \
+            --allow-unauthenticated \
+            --min-instances=0 --max-instances=2 --memory=512Mi \
+            --quiet
+
+      # A green deploy means the revision was accepted, not that it starts.
+      - name: Prove it boots
+        env:
+          PROJECT: ${{ vars.GCP_PROJECT || 'ff-python-api' }}
+          REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+          SERVICE: ${{ vars.CLOUD_RUN_SERVICE || 'dynasty-prospects' }}
+        run: |
+          URL="$(gcloud run services describe "${SERVICE}" \
+            --project="${PROJECT}" --region="${REGION}" --format='value(status.url)')"
+          for _ in $(seq 1 30); do
+            if curl -fsS "${URL}/api/healthz"; then
+              echo "::notice::${URL} is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::${URL} never answered /api/healthz"
+          exit 1

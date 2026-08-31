@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dynasty Prospects</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <header>
+    <h1>Dynasty Prospects</h1>
+    <p id="subtitle" class="muted"></p>
+  </header>
+
+  <section id="filters">
+    <input id="search" type="search" placeholder="Search player or team..." aria-label="Search player or team" />
+    <select id="position-filter" aria-label="Filter by position">
+      <option value="">All positions</option>
+    </select>
+    <select id="draft-class-filter" aria-label="Filter by draft class">
+      <option value="">All classes</option>
+    </select>
+    <span id="row-count" class="muted"></span>
+  </section>
+
+  <main>
+    <table id="prospect-table">
+      <thead>
+        <tr>
+          <th data-key="player_name" data-type="text">Player</th>
+          <th data-key="position" data-type="text">Pos</th>
+          <th data-key="team" data-type="text">Team</th>
+          <th data-key="draft_class" data-type="number">Class</th>
+          <th data-key="stars" data-type="number">Stars</th>
+          <th data-key="national_rank" data-type="number">HS Rank</th>
+          <th data-key="talent_composite" data-type="number">Team Talent</th>
+          <th data-key="latest_rank" data-type="number">Scout Rank</th>
+          <th data-key="latest_tier" data-type="text">Tier</th>
+        </tr>
+      </thead>
+      <tbody id="prospect-rows"></tbody>
+    </table>
+    <p id="empty-state" class="muted" hidden>No prospects match these filters.</p>
+  </main>
+
+  <aside id="detail-panel" hidden>
+    <button id="detail-close" aria-label="Close">&times;</button>
+    <div id="detail-content"></div>
+  </aside>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

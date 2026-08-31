@@ -14,6 +14,8 @@ dependencies = [
     "pandas",
     "appdirs",
     "fastparquet",
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
 ]
 
 # nfl_data_py==0.3.3 pins pandas<2.0/numpy<2.0, which forces pip's resolver to

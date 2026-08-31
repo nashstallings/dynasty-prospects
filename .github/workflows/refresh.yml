@@ -1,0 +1,105 @@
+name: Refresh dashboard data
+
+# Re-runs the CFBD pipeline, writes BigQuery, and rebuilds data/dashboard.json.
+# Weekly rather than daily (unlike nfl-2026-projections' nflverse refresh):
+# recruiting/stats/talent data doesn't turn over day-to-day the way NFL
+# rosters do, so a daily poll would mostly find nothing changed.
+on:
+  schedule:
+    - cron: "0 13 * * 1" # Monday 13:00 UTC
+  workflow_dispatch:
+
+# A slow rebuild must never race the next week's.
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commits the rebuilt dashboard.json
+      id-token: write # for Workload Identity Federation (BigQuery read+write)
+    outputs:
+      changed: ${{ steps.rebuild.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          # nfl_data_py pins pandas<2.0/numpy<2.0, which would drag the
+          # resolver above back down and break on this runner's Python. See
+          # requirements.txt / Dockerfile for the same fix applied there.
+          pip install --no-deps nfl_data_py==0.3.3
+
+      # GitHub's OIDC token is exchanged for short-lived Google credentials at
+      # run time. No service account key is stored in this repository.
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Run the pipeline and rebuild dashboard.json
+        id: rebuild
+        env:
+          PYTHONPATH: src
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+        run: |
+          cp data/dashboard.json "${RUNNER_TEMP}/dashboard.before.json" 2>/dev/null || echo '{}' > "${RUNNER_TEMP}/dashboard.before.json"
+
+          python -c "
+          import os
+          import dynasty_prospects
+          dynasty_prospects.run(cfbd_api_key=os.environ['CFBD_API_KEY'], write_to_bq=True)
+          "
+          python -m dynasty_prospects.export_dashboard_data
+
+          # The export script only rewrites the file when the content (minus
+          # generated_at) actually changed, so an unchanged working tree is
+          # the whole test.
+          if git diff --quiet -- data/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::no prospect data changed since the last refresh"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      # Nothing else stands between CFBD and the live dashboard, so a
+      # truncated or half-published pull must not be committed and deployed
+      # unattended.
+      - name: Sanity-check the rebuilt data
+        if: steps.rebuild.outputs.changed == 'true'
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m dynasty_prospects.check_dashboard \
+            "${RUNNER_TEMP}/dashboard.before.json" data/dashboard.json
+
+      - name: Commit
+        if: steps.rebuild.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git commit -m "Refresh dashboard data from CFBD"
+          git push origin HEAD:main
+
+  # A push made with GITHUB_TOKEN does not trigger deploy.yml's push trigger —
+  # that is GitHub's guard against workflows looping. Calling the deploy
+  # directly is the supported way through it.
+  deploy:
+    needs: rebuild
+    if: needs.rebuild.outputs.changed == 'true'
+    uses: ./.github/workflows/deploy.yml
+    permissions:
+      contents: read
+      id-token: write

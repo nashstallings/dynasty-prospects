@@ -4,6 +4,7 @@ import pandas as pd
 
 from . import config
 from .cfbd_client import get_client
+from .matching import normalize_name
 from .recruiting import fetch_recruiting
 from .stats import fetch_season_stats, pivot_wide
 from .talent import fetch_team_talent
@@ -19,7 +20,7 @@ def build_dim_prospect(df_stats_wide: pd.DataFrame, draft_class: int) -> pd.Data
     dim_prospect = current_season_players.copy()
     dim_prospect["draft_class"] = draft_class
     dim_prospect["prospect_id"] = (
-        dim_prospect["player_name"].str.lower().str.replace(r"[^a-z ]", "", regex=True).str.replace(" ", "_")
+        dim_prospect["player_name"].apply(normalize_name)
         + "_" + dim_prospect["team"].str.lower().str.replace(" ", "_")
     )
     return dim_prospect
