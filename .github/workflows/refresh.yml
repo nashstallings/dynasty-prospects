@@ -63,10 +63,15 @@ jobs:
           "
           python -m dynasty_prospects.export_dashboard_data
 
-          # The export script only rewrites the file when the content (minus
-          # generated_at) actually changed, so an unchanged working tree is
-          # the whole test.
-          if git diff --quiet -- data/; then
+          # Stage first so a brand-new dashboard.json is caught too -- plain
+          # `git diff` only compares already-tracked files and silently
+          # ignores an untracked one, which is exactly the case on the first
+          # successful run (data/dashboard.json is deliberately not
+          # committed in this repo -- see data/README.md). Without staging
+          # first, that first run reports "unchanged" and nothing is ever
+          # published.
+          git add -A -- data/
+          if git diff --cached --quiet -- data/; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "::notice::no prospect data changed since the last refresh"
             exit 0
