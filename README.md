@@ -5,13 +5,14 @@ draft prep, and a read-only dashboard for browsing it.
 
 ## How this repo fits together
 
-- **`src/dynasty_prospects/`** — pipeline logic (data pulls, transforms, BigQuery writes),
-  the dashboard's data export/server, and its GCP deploy pieces. Edit this in Claude Code.
+- **`src/dynasty_prospects/`** — pipeline logic (data pulls, transforms, BigQuery writes) and
+  the dashboard's data export. Edit this in Claude Code.
 - **`notebooks/colab_runner.ipynb`** — a thin notebook that clones this repo, installs it, and
   calls `dynasty_prospects.run()`. Runs in Colab so you get GCP auth for free. Useful for
   manual/ad-hoc runs (e.g. after uploading a scouting snapshot); the scheduled refresh below
   covers the routine case.
-- **`web/`** — the dashboard's static frontend (vanilla JS, no build step).
+- **`web/`** — the dashboard's static frontend (vanilla JS, no build step). Published to GitHub
+  Pages as-is; `web/data/dashboard.json` lives inside it for exactly that reason.
 
 ## Local dev (Claude Code)
 
@@ -30,25 +31,29 @@ Then edit modules under `src/dynasty_prospects/`, test locally (`pytest`), commi
 
 ## The dashboard
 
-`web/` + `src/dynasty_prospects/server.py` is a small, fully public, **read-only** browse/filter
-view over the pipeline's BigQuery tables — no sign-in, no editing, nothing written from the
-running service. It's modeled on the sibling `nfl-2026-projections` app's deploy shape, minus
-everything that app needs for its editable/save-gated model.
+`web/` is a small, fully public, **read-only** browse/filter view over the pipeline's BigQuery
+tables — no sign-in, no editing, no server at all. It's a fully static site: `index.html`
+fetches `web/data/dashboard.json`, a pre-baked file built by
+`python -m dynasty_prospects.export_dashboard_data` from `dim_prospect` and the fact tables
+(see that module's docstring for how it joins them — there's no shared `prospect_id` across
+tables, so it matches on normalized player name and flags genuinely ambiguous name collisions
+rather than silently guessing).
 
-**Where it runs.** Deployed to Cloud Run, opened at a URL. The running service never talks to
-BigQuery or CFBD — it only ever serves the static page plus a pre-baked `data/dashboard.json`,
-built by `python -m dynasty_prospects.export_dashboard_data` from `dim_prospect` and the fact
-tables (see that module's docstring for how it joins them — there's no shared `prospect_id`
-across tables, so it matches on normalized player name and flags genuinely ambiguous name
-collisions rather than silently guessing).
+**Where it lives:** `https://nashstallings.github.io/dynasty-prospects/` once Pages is enabled
+below — a predictable URL from the start, unlike a Cloud Run service URL.
 
 ### Deploy it
 
-Two one-time steps, from [Cloud Shell](https://shell.cloud.google.com):
+**One-time, in the repo's GitHub settings:** Settings → Pages → Build and deployment → Source →
+**GitHub Actions**. That's the only manual step; everything else is `.github/workflows/deploy.yml`
+(`actions/deploy-pages`, GitHub's own keyless Pages deployment — no GCP identity needed to
+publish the site itself).
+
+**For the scheduled data refresh** (below), which does need BigQuery access, one script from
+[Cloud Shell](https://shell.cloud.google.com):
 
 ```bash
-./infra/bootstrap.sh          # enables APIs, creates the Cloud Run runtime service account
-./infra/setup-github-oidc.sh  # lets Actions deploy + refresh data without storing a key
+./infra/setup-github-oidc.sh  # lets Actions touch BigQuery without storing a key
 ```
 
 Then add these under **Settings → Secrets and variables → Actions**:
@@ -59,18 +64,15 @@ Then add these under **Settings → Secrets and variables → Actions**:
 | Variable | `GCP_DEPLOY_SERVICE_ACCOUNT` | printed by `setup-github-oidc.sh` |
 | Secret | `CFBD_API_KEY` | your [collegefootballdata.com](https://collegefootballdata.com/key) key |
 
-Push to `main` and it deploys (`.github/workflows/deploy.yml`). It stays inert until the first
-two variables exist, so pushes won't fail before setup. `infra/deploy.sh` does the same thing
-by hand if you'd rather not wait for Actions.
-
-Cloud Run scales to zero when idle, so this costs essentially nothing.
+Push to `main` and the site publishes (`.github/workflows/deploy.yml`). GitHub Pages is free for
+a public repo.
 
 ### Keeping the data fresh
 
 `.github/workflows/refresh.yml` runs weekly (Monday 13:00 UTC, plus manual dispatch): it
-re-runs the CFBD pipeline, writes BigQuery, rebuilds `data/dashboard.json`, sanity-checks the
-result (`check_dashboard.py` — refuses an empty or suspiciously shrunk pull), and if anything
-changed, commits and triggers a redeploy. Weekly rather than daily, unlike
+re-runs the CFBD pipeline, writes BigQuery, rebuilds `web/data/dashboard.json`, sanity-checks
+the result (`check_dashboard.py` — refuses an empty or suspiciously shrunk pull), and if
+anything changed, commits and triggers a republish. Weekly rather than daily, unlike
 `nfl-2026-projections`' nflverse refresh — recruiting/stats/talent data doesn't turn over
 day-to-day the way NFL rosters do.
 
@@ -81,7 +83,7 @@ deliberately excludes `fact_scouting_rankings` from its routine write.
 
 ```bash
 python -m dynasty_prospects.export_dashboard_data   # needs `gcloud auth application-default login`
-python -m dynasty_prospects.server                  # http://127.0.0.1:8000
+python -m http.server --directory web 8000           # http://127.0.0.1:8000
 ```
 
 ## Tables produced

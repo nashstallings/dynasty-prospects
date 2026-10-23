@@ -1,4 +1,4 @@
-# data/
+# web/data/
 
 `dashboard.json` lives here once it's been built — it isn't seeded in this repo, since a
 placeholder would mean shipping made-up stats under real players' names. It's created by:
@@ -11,5 +11,6 @@ python -m dynasty_prospects.export_dashboard_data
 first run of `.github/workflows/refresh.yml`, which commits it going forward. See the "The
 dashboard" section of the root README for the full picture.
 
-Until it exists, `dynasty_prospects.server` still runs — it logs a warning and `/data/dashboard.json`
-404s, which the frontend shows as a friendly "failed to load" message rather than crashing.
+It lives inside `web/` rather than a sibling `data/` directory so that `web/` is a fully
+self-contained static site: GitHub Pages publishes `web/` as-is, and `index.html`/`app.js`
+reference this file with a relative path.

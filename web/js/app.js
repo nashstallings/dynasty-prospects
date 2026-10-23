@@ -205,7 +205,7 @@ async function init() {
   wireSorting();
   wireFilters();
   try {
-    const response = await fetch("/data/dashboard.json");
+    const response = await fetch("data/dashboard.json");
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     const payload = await response.json();
     allRows = (payload.prospects ?? []).map(toRow);
@@ -215,7 +215,7 @@ async function init() {
   } catch (err) {
     els.subtitle.textContent = "Could not load dashboard data.";
     els.emptyState.hidden = false;
-    els.emptyState.textContent = `Failed to load /data/dashboard.json: ${err.message}`;
+    els.emptyState.textContent = `Failed to load data/dashboard.json: ${err.message}`;
     console.error(err);
   }
 }

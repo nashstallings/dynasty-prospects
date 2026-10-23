@@ -1,6 +1,6 @@
 name: Refresh dashboard data
 
-# Re-runs the CFBD pipeline, writes BigQuery, and rebuilds data/dashboard.json.
+# Re-runs the CFBD pipeline, writes BigQuery, and rebuilds web/data/dashboard.json.
 # Weekly rather than daily (unlike nfl-2026-projections' nflverse refresh):
 # recruiting/stats/talent data doesn't turn over day-to-day the way NFL
 # rosters do, so a daily poll would mostly find nothing changed.
@@ -37,7 +37,7 @@ jobs:
           pip install -r requirements.txt
           # nfl_data_py pins pandas<2.0/numpy<2.0, which would drag the
           # resolver above back down and break on this runner's Python. See
-          # requirements.txt / Dockerfile for the same fix applied there.
+          # requirements.txt for the same fix applied there.
           pip install --no-deps nfl_data_py==0.3.3
 
       # GitHub's OIDC token is exchanged for short-lived Google credentials at
@@ -54,7 +54,7 @@ jobs:
           PYTHONPATH: src
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
         run: |
-          cp data/dashboard.json "${RUNNER_TEMP}/dashboard.before.json" 2>/dev/null || echo '{}' > "${RUNNER_TEMP}/dashboard.before.json"
+          cp web/data/dashboard.json "${RUNNER_TEMP}/dashboard.before.json" 2>/dev/null || echo '{}' > "${RUNNER_TEMP}/dashboard.before.json"
 
           python -c "
           import os
@@ -66,12 +66,12 @@ jobs:
           # Stage first so a brand-new dashboard.json is caught too -- plain
           # `git diff` only compares already-tracked files and silently
           # ignores an untracked one, which is exactly the case on the first
-          # successful run (data/dashboard.json is deliberately not
-          # committed in this repo -- see data/README.md). Without staging
-          # first, that first run reports "unchanged" and nothing is ever
-          # published.
-          git add -A -- data/
-          if git diff --cached --quiet -- data/; then
+          # successful run (web/data/dashboard.json is deliberately not
+          # committed in this repo -- see web/data/README.md). Without
+          # staging first, that first run reports "unchanged" and nothing is
+          # ever published.
+          git add -A -- web/data/
+          if git diff --cached --quiet -- web/data/; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "::notice::no prospect data changed since the last refresh"
             exit 0
@@ -87,14 +87,14 @@ jobs:
           PYTHONPATH: src
         run: |
           python -m dynasty_prospects.check_dashboard \
-            "${RUNNER_TEMP}/dashboard.before.json" data/dashboard.json
+            "${RUNNER_TEMP}/dashboard.before.json" web/data/dashboard.json
 
       - name: Commit
         if: steps.rebuild.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/
+          git add web/data/
           git commit -m "Refresh dashboard data from CFBD"
           git push origin HEAD:main
 
@@ -107,4 +107,5 @@ jobs:
     uses: ./.github/workflows/deploy.yml
     permissions:
       contents: read
+      pages: write
       id-token: write

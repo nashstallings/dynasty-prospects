@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Let GitHub Actions deploy and refresh data without storing a service account key.
+# Let GitHub Actions refresh BigQuery data without storing a service account key.
 #
 # Creates a Workload Identity pool and provider pinned to this repository, plus
-# a deployer service account Actions may impersonate. Run once, from Cloud Shell.
+# a service account Actions may impersonate. Run once, from Cloud Shell.
+#
+# This is BigQuery-only: the dashboard itself deploys to GitHub Pages, which
+# has its own built-in, keyless Actions deployment (actions/deploy-pages) and
+# needs no GCP identity at all. This identity exists purely so
+# .github/workflows/refresh.yml can run the CFBD pipeline (writes) and the
+# dashboard export (reads) against BigQuery on a schedule.
 #
 # Shares the same GCP project (and, if it already exists, the same "github"
 # Workload Identity pool) as nfl-2026-projections -- but needs its own
 # provider and service account, since a WIF provider's attribute condition is
-# pinned to one repository and can't be reused across repos. This deployer
-# also needs BigQuery roles nfl-2026-projections' doesn't: the scheduled
-# refresh workflow runs the CFBD pipeline (writes) and the dashboard export
-# (reads) as this same identity, not just `gcloud run deploy`.
+# pinned to one repository and can't be reused across repos.
 
 set -euo pipefail
 
@@ -28,8 +31,8 @@ PROJECT_NUMBER="$(gcloud projects describe "${PROJECT}" --format='value(projectN
 echo "project ${PROJECT} · repo ${REPO}"
 
 gcloud services enable \
-  iamcredentials.googleapis.com sts.googleapis.com run.googleapis.com \
-  cloudbuild.googleapis.com bigquery.googleapis.com --project="${PROJECT}" --quiet
+  iamcredentials.googleapis.com sts.googleapis.com bigquery.googleapis.com \
+  --project="${PROJECT}" --quiet
 
 if ! gcloud iam workload-identity-pools describe "${POOL}" \
   --project="${PROJECT}" --location=global >/dev/null 2>&1; then
@@ -54,19 +57,8 @@ fi
 
 if ! gcloud iam service-accounts describe "${SA_EMAIL}" --project="${PROJECT}" >/dev/null 2>&1; then
   gcloud iam service-accounts create "${DEPLOYER}" \
-    --project="${PROJECT}" --display-name="dynasty-prospects deployer (GitHub Actions)"
+    --project="${PROJECT}" --display-name="dynasty-prospects refresh (GitHub Actions)"
 fi
-
-# Same deploy-time roles as nfl-2026-projections' deployer -- see that
-# repo's infra/setup-github-oidc.sh for why each one is here (actAs
-# preflight, Cloud Build staging bucket access, etc).
-for ROLE in roles/run.admin roles/cloudbuild.builds.editor roles/storage.admin \
-            roles/artifactregistry.admin roles/iam.serviceAccountUser \
-            roles/iam.serviceAccountViewer; do
-  gcloud projects add-iam-policy-binding "${PROJECT}" \
-    --member="serviceAccount:${SA_EMAIL}" --role="${ROLE}" \
-    --condition=None --quiet >/dev/null
-done
 
 # jobUser is inherently project-scoped in BigQuery's model (there's no
 # per-dataset job-running permission), so it can't be narrowed further.
@@ -99,7 +91,7 @@ fi
 
 # Narrowed to this one repository: another repo under the same owner, which
 # the provider condition would admit if it weren't pinned above, still
-# cannot impersonate this deployer.
+# cannot impersonate this service account.
 gcloud iam service-accounts add-iam-policy-binding "${SA_EMAIL}" \
   --project="${PROJECT}" \
   --role="roles/iam.workloadIdentityUser" \
@@ -120,6 +112,7 @@ And under Settings → Secrets and variables → Actions → Secrets:
 
   CFBD_API_KEY    your collegefootballdata.com API key
 
-The deploy workflow stays inert until the first two exist; the refresh
-workflow additionally needs CFBD_API_KEY.
+The refresh workflow (BigQuery) needs all three. Publishing the dashboard
+itself is handled separately by GitHub Pages -- see the root README's
+"Deploy it" section for that one-time setting.
 EOF

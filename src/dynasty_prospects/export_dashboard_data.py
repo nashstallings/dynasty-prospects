@@ -1,4 +1,4 @@
-"""Join the pipeline's BigQuery tables into one flat data/dashboard.json for the web dashboard.
+"""Join the pipeline's BigQuery tables into one flat web/data/dashboard.json for the web dashboard.
 
 Only dim_prospect has a stable prospect_id -- every fact table is matched
 back to it by normalized player name (see matching.py), since that's the
@@ -21,7 +21,11 @@ import pandas as pd
 from . import bigquery_io, config
 from .matching import normalize_name
 
-DEFAULT_OUT = Path(__file__).resolve().parents[2] / "data" / "dashboard.json"
+# Lives inside web/ -- not a sibling data/ -- so the whole web/ directory is
+# a self-contained static site GitHub Pages can publish as-is: index.html
+# fetches this with a relative path, no server-side route needed to join
+# two separate directories together.
+DEFAULT_OUT = Path(__file__).resolve().parents[2] / "web" / "data" / "dashboard.json"
 
 
 def _records(df: pd.DataFrame) -> list[dict[str, Any]]:
